@@ -1,0 +1,28 @@
+{
+  "name": "vocal-range-technical-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "benchmark": "tsx scripts/run-benchmark.ts",
+    "simulate:validation": "tsx scripts/run-validation-simulation.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "@phosphor-icons/web": "2.1.2",
+    "@vercel/analytics": "2.0.1",
+    "pitchy": "4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.13",
+    "tsx": "4.20.6",
+    "typescript": "7.0.2",
+    "vite": "8.2.1",
+    "vitest": "4.1.10"
+  }
+}

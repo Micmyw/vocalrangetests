@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+benchmark-results/
+validation-results/
+output/
+.playwright-cli/
+*.tsbuildinfo
+.DS_Store
+
+.vercel
+.env*
