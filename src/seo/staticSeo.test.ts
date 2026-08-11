@@ -34,8 +34,15 @@ describe("static SEO documents", () => {
     expect(privacy).toContain('href="https://vocalrangetests.com/privacy"');
     expect(privacy).toContain("processed locally in your browser");
     expect(privacy).toContain("not recorded, saved, or uploaded");
-    expect(privacy).toContain("Vercel Web Analytics");
+    expect(privacy).toContain("Cloudflare");
+    expect(privacy).toContain("Google Analytics");
+    expect(privacy).toContain("Microsoft Clarity");
     expect(privacy).toContain("privacy@vocalrangetests.com");
+  });
+
+  it("excludes the microphone test and its result from Clarity recordings", () => {
+    expect(homepage).toContain('id="vocal-range-tool"');
+    expect(homepage).toContain('data-clarity-exclude="true"');
   });
 
   it("lists only the canonical homepage in the sitemap", () => {

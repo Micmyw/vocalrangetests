@@ -1,5 +1,3 @@
-import { inject, track as sendVercelEvent } from "@vercel/analytics";
-
 export const ANALYTICS_EVENTS = [
   "test_started",
   "microphone_ready",
@@ -44,9 +42,13 @@ export function initializeProductAnalytics(): ProductAnalytics {
   const enabled = import.meta.env.PROD &&
     typeof location !== "undefined" &&
     location.hostname === "vocalrangetests.com";
-  if (enabled) inject({ mode: "production", debug: false });
   return new ProductAnalytics({
     enabled,
-    send: (event) => sendVercelEvent(event),
+    send: (event) => {
+      const analyticsWindow = window as typeof window & {
+        gtag?: (...arguments_: unknown[]) => void;
+      };
+      analyticsWindow.gtag?.("event", event);
+    },
   });
 }

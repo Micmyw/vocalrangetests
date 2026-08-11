@@ -1,5 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vitest/config";
+import {
+  PRODUCTION_ANALYTICS_PLACEHOLDER,
+  renderProductionAnalyticsTags,
+} from "./src/seo/analyticsTags.ts";
 
 const isProductionDeployment = process.env.VERCEL_ENV === "production";
 
@@ -40,8 +44,21 @@ function privacyRoutePlugin(): Plugin {
   };
 }
 
+function productionAnalyticsPlugin(): Plugin {
+  return {
+    name: "vocal-range-production-analytics",
+    enforce: "pre",
+    transformIndexHtml(html) {
+      return html.replace(
+        PRODUCTION_ANALYTICS_PLACEHOLDER,
+        renderProductionAnalyticsTags(isProductionDeployment),
+      );
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [privacyRoutePlugin(), robotsMetaPlugin()],
+  plugins: [privacyRoutePlugin(), robotsMetaPlugin(), productionAnalyticsPlugin()],
   server: {
     host: "0.0.0.0",
     allowedHosts: ["terminal.local"],
