@@ -22,6 +22,7 @@ export interface VocalRangeTestSnapshot {
   calibrationRemainingMs: number | null;
   captureElapsedMs: number | null;
   stableDurationMs: number;
+  stableProgressRatio: number;
   statusMessage: string;
   errorMessage: string | null;
   recoveryAction: RecoveryAction;
@@ -31,6 +32,9 @@ export interface VocalRangeTestSnapshot {
   overlaps: RangeOverlap[];
   noiseFloorRms: number | null;
   stableLocked: boolean;
+  currentNote: string | null;
+  inputLevel: number;
+  microphoneActive: boolean;
 }
 
 export interface VocalRangeTestViewPort {
@@ -124,10 +128,13 @@ export class VocalRangeTestController {
     this.updateSnapshot({
       captureElapsedMs: 0,
       stableDurationMs: 0,
+      stableProgressRatio: 0,
       statusMessage: `Listening for your ${this.currentEndpoint} comfortable note…`,
       errorMessage: null,
       recoveryAction: null,
       stableLocked: false,
+      currentNote: null,
+      inputLevel: 0,
     });
   }
 
@@ -137,8 +144,17 @@ export class VocalRangeTestController {
     }
     if (!this.currentEndpoint) throw new Error("Missing endpoint for retry");
     this.currentPhase = `${this.currentEndpoint}-ready`;
-    this.render({ errorMessage: null, recoveryAction: null });
-    this.startCapture();
+    this.render({
+      errorMessage: null,
+      recoveryAction: null,
+      captureElapsedMs: null,
+      stableDurationMs: 0,
+      stableProgressRatio: 0,
+      stableLocked: false,
+      currentNote: null,
+      inputLevel: 0,
+      statusMessage: `Ready to listen for your ${this.currentEndpoint} comfortable note.`,
+    });
   }
 
   async continueAfterSuccess(): Promise<void> {
@@ -151,6 +167,10 @@ export class VocalRangeTestController {
       this.render({
         statusMessage: "Lowest note captured. Prepare your highest comfortable note.",
         stableLocked: false,
+        currentNote: null,
+        inputLevel: 0,
+        stableDurationMs: 0,
+        stableProgressRatio: 0,
       });
       return;
     }
@@ -162,6 +182,31 @@ export class VocalRangeTestController {
     this.retestTarget = endpoint;
     this.analytics.track("retest_started");
     await this.openAndCalibrate(endpoint);
+  }
+
+  async cancelRetest(): Promise<void> {
+    if (this.retestTarget === null || !this.result) {
+      throw new Error("There is no endpoint retest to cancel");
+    }
+    this.activeCapture = null;
+    this.processor.resetStability();
+    await this.stopMicrophone();
+    this.currentPhase = "result";
+    this.currentEndpoint = null;
+    this.retestTarget = null;
+    this.render({
+      calibrationRemainingMs: null,
+      captureElapsedMs: null,
+      stableDurationMs: 0,
+      stableProgressRatio: 1,
+      statusMessage: "Your vocal range is ready.",
+      errorMessage: null,
+      recoveryAction: null,
+      stableLocked: false,
+      currentNote: null,
+      inputLevel: 0,
+      microphoneActive: false,
+    });
   }
 
   async reopenMicrophone(): Promise<void> {
@@ -183,7 +228,10 @@ export class VocalRangeTestController {
       recoveryAction: "reopen-microphone",
       captureElapsedMs: null,
       stableDurationMs: 0,
+      stableProgressRatio: 0,
       stableLocked: false,
+      currentNote: null,
+      inputLevel: 0,
     });
   }
 
@@ -202,6 +250,20 @@ export class VocalRangeTestController {
     this.render();
   }
 
+  async stopTest(): Promise<void> {
+    await this.stopMicrophone();
+    this.processor.reset();
+    this.currentPhase = "intro";
+    this.currentEndpoint = null;
+    this.lowest = null;
+    this.highest = null;
+    this.result = null;
+    this.overlaps = [];
+    this.retestTarget = null;
+    this.snapshot = initialSnapshot();
+    this.render({ statusMessage: "Microphone off. Ready when you are." });
+  }
+
   private async openAndCalibrate(endpoint: EndpointKind): Promise<void> {
     await this.stopMicrophone();
     this.currentEndpoint = endpoint;
@@ -217,7 +279,11 @@ export class VocalRangeTestController {
       calibrationRemainingMs: PRODUCT_AUDIO_CONFIG.calibrationMs,
       captureElapsedMs: null,
       stableDurationMs: 0,
+      stableProgressRatio: 0,
       stableLocked: false,
+      currentNote: null,
+      inputLevel: 0,
+      microphoneActive: false,
     });
 
     const generation = ++this.microphoneGeneration;
@@ -229,19 +295,28 @@ export class VocalRangeTestController {
     this.microphone = microphone;
     try {
       await microphone.start();
-      if (generation !== this.microphoneGeneration) return;
+      if (generation !== this.microphoneGeneration) {
+        await microphone.stop();
+        return;
+      }
       this.analytics.track("microphone_ready");
       this.currentPhase = "calibrating";
       this.render({
         statusMessage: "Stay quiet while we check your room for 3 seconds.",
+        microphoneActive: true,
       });
     } catch (error) {
+      if (generation !== this.microphoneGeneration) {
+        await microphone.stop();
+        return;
+      }
       if (this.microphone === microphone) this.microphone = null;
       this.currentPhase = "recoverable-error";
       this.render({
         statusMessage: "Microphone access is required to continue.",
         errorMessage: microphoneErrorMessage(error),
         recoveryAction: "reopen-microphone",
+        microphoneActive: false,
       });
     }
   }
@@ -292,7 +367,11 @@ export class VocalRangeTestController {
       this.updateSnapshot({
         captureElapsedMs: outcome.elapsedMs,
         stableDurationMs: outcome.stableDurationMs,
+        stableProgressRatio: outcome.progressRatio,
         statusMessage: liveStatus(observation, outcome.rejectReason),
+        currentNote: usableNoteFor(observation),
+        inputLevel: visualInputLevel(observation.signal.rms),
+        stableLocked: observation.stable.state === "stable",
       });
       return;
     }
@@ -305,6 +384,9 @@ export class VocalRangeTestController {
         errorMessage: failureMessageFor(outcome.reason),
         recoveryAction: "retry-capture",
         stableLocked: false,
+        stableProgressRatio: 0,
+        currentNote: usableNoteFor(observation),
+        inputLevel: visualInputLevel(observation.signal.rms),
       });
       return;
     }
@@ -321,7 +403,9 @@ export class VocalRangeTestController {
       recoveryAction: null,
       stableLocked: true,
       captureElapsedMs: null,
-      stableDurationMs: 0,
+      stableDurationMs: outcome.stableLatencyMs,
+      stableProgressRatio: 1,
+      currentNote: outcome.endpoint.note,
     });
   }
 
@@ -329,6 +413,7 @@ export class VocalRangeTestController {
     if (!this.lowest || !this.highest) throw new Error("Both endpoints are required for a result");
     const calculation = calculateRange(this.lowest, this.highest);
     if (!calculation.ok) {
+      this.highest = null;
       this.currentEndpoint = "highest";
       this.currentPhase = "recoverable-error";
       this.render({
@@ -336,6 +421,7 @@ export class VocalRangeTestController {
         errorMessage: "Retest your highest note with a comfortable pitch above your lowest note.",
         recoveryAction: "retry-capture",
         stableLocked: false,
+        stableProgressRatio: 0,
       });
       return;
     }
@@ -351,6 +437,10 @@ export class VocalRangeTestController {
       result: this.result,
       overlaps: this.overlaps,
       stableLocked: false,
+      stableProgressRatio: 1,
+      currentNote: null,
+      inputLevel: 0,
+      microphoneActive: false,
     });
   }
 
@@ -359,6 +449,7 @@ export class VocalRangeTestController {
     const microphone = this.microphone;
     this.microphone = null;
     if (microphone) await microphone.stop();
+    this.snapshot = { ...this.snapshot, microphoneActive: false };
   }
 
   private render(patch: Partial<VocalRangeTestSnapshot> = {}): void {
@@ -387,6 +478,7 @@ function initialSnapshot(): VocalRangeTestSnapshot {
     calibrationRemainingMs: null,
     captureElapsedMs: null,
     stableDurationMs: 0,
+    stableProgressRatio: 0,
     statusMessage: "Ready to start.",
     errorMessage: null,
     recoveryAction: null,
@@ -396,6 +488,9 @@ function initialSnapshot(): VocalRangeTestSnapshot {
     overlaps: [],
     noiseFloorRms: null,
     stableLocked: false,
+    currentNote: null,
+    inputLevel: 0,
+    microphoneActive: false,
   };
 }
 
@@ -406,9 +501,34 @@ function liveStatus(observation: PitchFrameObservation, reason: string | null): 
 }
 
 function microphoneErrorMessage(error: unknown): string {
+  const name = typeof error === "object" && error !== null && "name" in error
+    ? String(error.name)
+    : "";
+  if (["NotAllowedError", "SecurityError", "PermissionDeniedError"].includes(name)) {
+    return "Allow microphone access in your browser settings, then try again.";
+  }
+  if (["NotFoundError", "DevicesNotFoundError"].includes(name)) {
+    return "No microphone was found. Connect or enable a microphone, then try again.";
+  }
+  if (["NotReadableError", "TrackStartError", "AbortError"].includes(name)) {
+    return "Your microphone may be in use by another app. Close it there, then try again.";
+  }
+  if (name === "OverconstrainedError") {
+    return "The selected microphone is unavailable. Check your device settings, then try again.";
+  }
   const message = error instanceof Error ? error.message : String(error);
   if (/denied|permission|notallowed/i.test(message)) {
     return "Microphone access is needed for this test. Allow access in your browser settings and try again.";
   }
   return "Your microphone could not be opened. Check your browser settings and try again.";
+}
+
+function visualInputLevel(rms: number): number {
+  if (!Number.isFinite(rms) || rms <= 0) return 0;
+  return Math.min(1, rms / 0.2);
+}
+
+function usableNoteFor(observation: PitchFrameObservation): string | null {
+  if (observation.signal.state !== "usable") return null;
+  return observation.note?.note ?? null;
 }

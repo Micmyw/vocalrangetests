@@ -1,5 +1,3 @@
-import "@fontsource-variable/inter/wght.css";
-import "@phosphor-icons/web/regular";
 import "../style.css";
 import { buildVocalRangeToolMarkup } from "./VocalRangeTestView";
 import type { VocalRangeTestSnapshot } from "./VocalRangeTestController";
@@ -12,6 +10,7 @@ const snapshot: VocalRangeTestSnapshot = {
   calibrationRemainingMs: null,
   captureElapsedMs: null,
   stableDurationMs: 0,
+  stableProgressRatio: 1,
   statusMessage: "Your vocal range is ready.",
   errorMessage: null,
   recoveryAction: null,
@@ -25,6 +24,9 @@ const snapshot: VocalRangeTestSnapshot = {
   ],
   noiseFloorRms: 0.001,
   stableLocked: false,
+  currentNote: null,
+  inputLevel: 0,
+  microphoneActive: false,
 };
 
 const root = document.querySelector<HTMLElement>("#design-result");

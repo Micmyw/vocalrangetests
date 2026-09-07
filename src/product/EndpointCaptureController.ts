@@ -9,6 +9,8 @@ export type EndpointCaptureStatus =
     state: "collecting";
     elapsedMs: number;
     stableDurationMs: number;
+    progressMs: number;
+    progressRatio: number;
     rejectReason: string | null;
   }
   | {
@@ -35,6 +37,7 @@ export class EndpointCaptureController {
   private readonly observations: PitchFrameObservation[] = [];
   private readonly rejectReasons: string[] = [];
   private lockedAtMs: number | null = null;
+  private lockedStableDurationMs: number | null = null;
   private terminal: EndpointCaptureStatus | null = null;
 
   constructor(options: EndpointCaptureOptions) {
@@ -65,6 +68,7 @@ export class EndpointCaptureController {
 
     if (isStable(observation) && this.lockedAtMs === null) {
       this.lockedAtMs = observation.timestampMs;
+      this.lockedStableDurationMs = Math.max(0, observation.stable.stableDurationMs);
     }
 
     if (
@@ -85,10 +89,22 @@ export class EndpointCaptureController {
       return this.reject(this.rejectReasons.at(-1) ?? "capture-timeout");
     }
 
+    const observedStableDurationMs = Math.max(0, observation.stable.stableDurationMs);
+    const progressMs = this.lockedAtMs === null || this.lockedStableDurationMs === null
+      ? observedStableDurationMs
+      : this.lockedStableDurationMs + Math.min(
+        this.tailConfirmationMs,
+        Math.max(0, observation.timestampMs - this.lockedAtMs),
+      );
+    const progressTargetMs = (this.lockedStableDurationMs ?? observedStableDurationMs) +
+      this.tailConfirmationMs;
+
     return {
       state: "collecting",
       elapsedMs,
       stableDurationMs: observation.stable.stableDurationMs,
+      progressMs,
+      progressRatio: progressTargetMs <= 0 ? 0 : Math.min(1, progressMs / progressTargetMs),
       rejectReason: reason,
     };
   }
@@ -130,4 +146,3 @@ function logMedian(values: readonly number[]): number {
     : logs[middle];
   return 2 ** center;
 }
-

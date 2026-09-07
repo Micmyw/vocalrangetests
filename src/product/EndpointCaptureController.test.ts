@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { StableNoteDetector } from "../dsp/StableNoteDetector";
 import type { PitchFrameObservation } from "./PitchFrameProcessor";
-import { EndpointCaptureController } from "./EndpointCaptureController";
+import {
+  EndpointCaptureController,
+  type EndpointCaptureStatus,
+} from "./EndpointCaptureController";
 
 describe("EndpointCaptureController", () => {
   it("does not accept a single stable frame", () => {
@@ -25,6 +29,42 @@ describe("EndpointCaptureController", () => {
     });
     if (status.state !== "success") throw new Error("Expected successful capture");
     expect(status.endpoint.frequencyHz).toBeCloseTo(220.05, 1);
+  });
+
+  it("continues progress through tail confirmation after the detector window saturates", () => {
+    const detector = new StableNoteDetector();
+    const capture = new EndpointCaptureController({ startedAtMs: 0 });
+    const samples = new Map<number, EndpointCaptureStatus>();
+    let status: EndpointCaptureStatus | undefined;
+
+    for (let timestampMs = 0; timestampMs <= 1_400; timestampMs += 50) {
+      status = capture.update(observationWithDetector(detector, timestampMs));
+      if ([600, 800, 1_000, 1_350].includes(timestampMs)) {
+        samples.set(timestampMs, status);
+      }
+    }
+
+    expect(samples.get(600)).toMatchObject({
+      state: "collecting",
+      progressMs: 600,
+      progressRatio: 600 / 1_400,
+    });
+    expect(samples.get(800)).toMatchObject({
+      state: "collecting",
+      progressMs: 800,
+      progressRatio: 800 / 1_400,
+    });
+    expect(samples.get(1_000)).toMatchObject({
+      state: "collecting",
+      progressMs: 1_000,
+      progressRatio: 1_000 / 1_400,
+    });
+    expect(samples.get(1_350)).toMatchObject({
+      state: "collecting",
+      progressMs: 1_350,
+      progressRatio: 1_350 / 1_400,
+    });
+    expect(status).toMatchObject({ state: "success" });
   });
 
   it("rejects signal loss after lock as insufficient terminal stability", () => {
@@ -123,3 +163,29 @@ function observation(
   };
 }
 
+function observationWithDetector(
+  detector: StableNoteDetector,
+  timestampMs: number,
+): PitchFrameObservation {
+  const estimate = { frequencyHz: 220, confidence: 0.98 };
+  const signal = {
+    state: "usable" as const,
+    rms: 0.1,
+    peak: 0.14,
+    noiseFloorRms: 0.001,
+    noiseFloorDb: -60,
+    snrDb: 40,
+    clipping: false,
+    clippedSampleRatio: 0,
+    rejectReason: null,
+  };
+  return {
+    timestampMs,
+    sampleRate: 48_000,
+    estimate,
+    note: null,
+    signal,
+    stable: detector.update({ timestampMs, estimate, quality: signal }),
+    processingTimeMs: 1,
+  };
+}

@@ -1,5 +1,3 @@
-import "@fontsource-variable/inter/wght.css";
-import "@phosphor-icons/web/regular";
 import "./style.css";
 import { MicrophoneController } from "./audio/MicrophoneController";
 import { PitchyMpmAdapter } from "./dsp/PitchyMpmAdapter";
@@ -27,6 +25,8 @@ const view = new VocalRangeTestView(root, {
   onContinueSuccess: () => controller.continueAfterSuccess(),
   onRetestEndpoint: (endpoint) => controller.retestEndpoint(endpoint),
   onTestAgain: () => controller.testAgain(),
+  onStopTest: () => controller.stopTest(),
+  onCancelRetest: () => controller.cancelRetest(),
 });
 
 controller = new VocalRangeTestController({
@@ -45,4 +45,3 @@ controller = new VocalRangeTestController({
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) void controller.handleHidden();
 });
-

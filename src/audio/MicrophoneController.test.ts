@@ -2,6 +2,50 @@ import { describe, expect, it, vi } from "vitest";
 import { MicrophoneController } from "./MicrophoneController";
 
 describe("MicrophoneController", () => {
+  it("releases a late microphone grant after a pending start is stopped", async () => {
+    let resolveUserMedia!: (stream: MediaStream) => void;
+    const getUserMedia = vi.fn(() => new Promise<MediaStream>((resolve) => {
+      resolveUserMedia = resolve;
+    }));
+    const stopTrack = vi.fn();
+    const track = {
+      stop: stopTrack,
+      getSettings: () => ({ sampleRate: 48_000, channelCount: 1 }),
+    };
+    const stream = {
+      getTracks: () => [track],
+      getAudioTracks: () => [track],
+    } as unknown as MediaStream;
+    const createAudioContext = vi.fn();
+    const schedule = vi.fn(() => 17);
+    const controller = new MicrophoneController({
+      frameSize: 4096,
+      intervalMs: 50,
+      onFrame: () => undefined,
+      getUserMedia,
+      createAudioContext,
+      schedule,
+      cancel: () => undefined,
+      visibilitySource: null,
+    });
+
+    const startPromise = controller.start();
+    const cancelledStart = expect(startPromise).rejects.toThrow("cancelled");
+    expect(controller.state).toBe("starting");
+
+    await controller.stop();
+    expect(controller.state).toBe("idle");
+
+    resolveUserMedia(stream);
+    await cancelledStart;
+
+    expect(stopTrack).toHaveBeenCalledOnce();
+    expect(createAudioContext).not.toHaveBeenCalled();
+    expect(schedule).not.toHaveBeenCalled();
+    expect(controller.state).toBe("idle");
+    expect(controller.lastError).toBeNull();
+  });
+
   it("captures one reusable frame at the actual AudioContext sample rate and cleans up", async () => {
     const stopTrack = vi.fn();
     const track = {

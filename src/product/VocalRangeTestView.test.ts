@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { VocalRangeTestSnapshot } from "./VocalRangeTestController";
-import { buildVocalRangeToolMarkup } from "./VocalRangeTestView";
+import { buildVocalRangeToolMarkup, VocalRangeTestView } from "./VocalRangeTestView";
 
 describe("buildVocalRangeToolMarkup", () => {
   it("renders an accessible Intro with one step heading and a real start button", () => {
@@ -19,14 +19,24 @@ describe("buildVocalRangeToolMarkup", () => {
       phase: "lowest-capturing",
       activeEndpoint: "lowest",
       stableDurationMs: 650,
+      stableProgressRatio: 0.5,
       captureElapsedMs: 900,
+      currentNote: "A3",
+      inputLevel: 0.5,
+      microphoneActive: true,
       statusMessage: "Stable pitch found. Keep holding it steady…",
     }));
 
     expect(markup).toContain("Sing your lowest comfortable note");
-    expect(markup).toContain("Hold it steadily for about 3 seconds");
+    expect(markup).toContain("Current note");
+    expect(markup).toContain("A3");
+    expect(markup).toContain("Input level");
+    expect(markup).toContain('data-level="0.5"');
+    expect(markup).toContain("Pitch stability");
     expect(markup).toContain("Stable pitch found");
     expect(markup).toContain("<progress");
+    expect(markup).toContain('value="50"');
+    expect(markup).toContain('data-action="stop-test"');
     expect(markup).not.toContain("must sing for 3 seconds");
   });
 
@@ -59,6 +69,9 @@ describe("buildVocalRangeToolMarkup", () => {
     expect(markup).toContain('data-action="retest-lowest"');
     expect(markup).toContain('data-action="retest-highest"');
     expect(markup).toContain('data-action="test-again"');
+    expect(markup).not.toContain("data-stable-progress");
+    expect(markup).toContain("Total range");
+    expect(markup).not.toContain('ph ph-check"');
     expect(markup).not.toContain("±0.12");
   });
 
@@ -71,6 +84,7 @@ describe("buildVocalRangeToolMarkup", () => {
     }));
 
     expect(markup).toContain("Keep the note steady a little longer.");
+    expect(markup).toContain('role="alert"');
     expect(markup).toContain('data-action="retry-capture"');
     expect(markup).toContain("Try again");
   });
@@ -84,11 +98,126 @@ describe("buildVocalRangeToolMarkup", () => {
     }));
 
     expect(markup).toContain("Microphone access needed");
-    expect(markup).toContain('<li data-state="current"><span>Room');
+    expect(markup).toContain('<li data-state="current" aria-current="step"><span>Room');
     expect(markup).toContain('<li data-state="upcoming"><span>Lowest');
     expect(markup).not.toContain("Try your lowest note again");
   });
+
+  it("marks only the room step current while calibrating", () => {
+    const markup = buildVocalRangeToolMarkup(snapshot({
+      phase: "calibrating",
+      activeEndpoint: "lowest",
+      microphoneActive: true,
+      calibrationRemainingMs: 2_000,
+    }));
+
+    expect(markup.match(/aria-current="step"/g)).toHaveLength(1);
+    expect(markup).toContain('<li data-state="current" aria-current="step"><span>Room');
+    expect(markup).toContain('<li data-state="upcoming"><span>Lowest');
+  });
+
+  it("keeps the endpoint being retested current even when an old result exists", () => {
+    const lowest = { frequencyHz: 220, midi: 57, note: "A3", cents: 0 };
+    const highest = { frequencyHz: 440, midi: 69, note: "A4", cents: 0 };
+    const markup = buildVocalRangeToolMarkup(snapshot({
+      phase: "lowest-ready",
+      activeEndpoint: "lowest",
+      lowest,
+      highest,
+      result: { lowest, highest, semitoneSpan: 12, octaveSpan: 1 },
+      microphoneActive: true,
+    }));
+
+    expect(markup).toContain('<li data-state="current" aria-current="step"><span>Lowest</span>');
+    expect(markup).toContain('data-action="cancel-retest"');
+    expect(markup).toContain("Back to result");
+    expect(markup).not.toContain('<li data-state="complete"><i class="ph ph-check" aria-hidden="true"></i><span>Lowest</span>');
+  });
+
+  it("pads chart endpoints away from the edges for octave-boundary results", () => {
+    const lowest = { frequencyHz: 130.81, midi: 48, note: "C3", cents: 0 };
+    const highest = { frequencyHz: 523.25, midi: 72, note: "C5", cents: 0 };
+    const markup = buildVocalRangeToolMarkup(snapshot({
+      phase: "result",
+      result: { lowest, highest, semitoneSpan: 24, octaveSpan: 2 },
+      lowest,
+      highest,
+    }));
+
+    expect(markup).not.toContain("--range-start:0%");
+    expect(markup).not.toContain("--range-end:100%");
+  });
+
+  it("does not move focus on the initial render, then focuses user-triggered phase changes", async () => {
+    const focus = vi.fn();
+    const root = {
+      innerHTML: "",
+      addEventListener: vi.fn(),
+      contains: vi.fn(() => true),
+      querySelector: vi.fn(() => ({ focus })),
+    } as unknown as HTMLElement;
+    const view = new VocalRangeTestView(root, handlers());
+
+    view.render(snapshot());
+    await Promise.resolve();
+    expect(focus).not.toHaveBeenCalled();
+
+    view.render(snapshot({ phase: "requesting-permission", activeEndpoint: "lowest" }));
+    await Promise.resolve();
+    expect(focus).toHaveBeenCalledOnce();
+  });
+
+  it("throttles changing status announcements while preserving live visual updates", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(0);
+      const liveRegion = { textContent: "Listening for a steady note…" };
+      const visualStatus = { textContent: "Listening for a steady note…" };
+      const root = {
+        innerHTML: "",
+        addEventListener: vi.fn(),
+        contains: vi.fn(() => true),
+        querySelector: vi.fn((selector: string) => {
+          if (selector === "[data-live]") return liveRegion;
+          if (selector === "[data-status]") return visualStatus;
+          return null;
+        }),
+      } as unknown as HTMLElement;
+      const view = new VocalRangeTestView(root, handlers());
+      const listening = snapshot({
+        phase: "lowest-capturing",
+        activeEndpoint: "lowest",
+        statusMessage: "Listening for a steady note…",
+      });
+      view.render(listening);
+
+      vi.setSystemTime(100);
+      view.render({ ...listening, statusMessage: "Your signal is too quiet." });
+      expect(visualStatus.textContent).toBe("Your signal is too quiet.");
+      expect(liveRegion.textContent).toBe("Listening for a steady note…");
+
+      vi.setSystemTime(1_100);
+      view.render({ ...listening, statusMessage: "Your signal is too quiet." });
+      expect(liveRegion.textContent).toBe("Your signal is too quiet.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
+
+function handlers() {
+  return {
+    onStartTest: vi.fn(async () => undefined),
+    onStartCapture: vi.fn(),
+    onRetryCapture: vi.fn(),
+    onReopenMicrophone: vi.fn(async () => undefined),
+    onContinueSuccess: vi.fn(async () => undefined),
+    onRetestEndpoint: vi.fn(async () => undefined),
+    onTestAgain: vi.fn(async () => undefined),
+    onStopTest: vi.fn(async () => undefined),
+    onCancelRetest: vi.fn(async () => undefined),
+  };
+}
 
 function snapshot(patch: Partial<VocalRangeTestSnapshot> = {}): VocalRangeTestSnapshot {
   return {
@@ -97,6 +226,7 @@ function snapshot(patch: Partial<VocalRangeTestSnapshot> = {}): VocalRangeTestSn
     calibrationRemainingMs: null,
     captureElapsedMs: null,
     stableDurationMs: 0,
+    stableProgressRatio: 0,
     statusMessage: "Ready to start.",
     errorMessage: null,
     recoveryAction: null,
@@ -106,6 +236,9 @@ function snapshot(patch: Partial<VocalRangeTestSnapshot> = {}): VocalRangeTestSn
     overlaps: [],
     noiseFloorRms: null,
     stableLocked: false,
+    currentNote: null,
+    inputLevel: 0,
+    microphoneActive: false,
     ...patch,
   };
 }

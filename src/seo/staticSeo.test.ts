@@ -9,18 +9,21 @@ describe("static SEO documents", () => {
     expect(homepage).toContain('name="description"');
     expect(homepage).toContain('href="https://vocalrangetests.com/"');
     expect(homepage.match(/<h1\b/g)).toHaveLength(1);
+    expect(homepage).toMatch(/Find your vocal range,\s*<em>note by note\.<\/em>/);
     expect(homepage).toContain("Sing your lowest and highest comfortable notes");
     expect(homepage).toContain('id="vocal-range-tool"');
+    expect(homepage).toContain('href="#vocal-range-tool">Skip to vocal range test</a>');
+    expect(homepage).toContain('href="/favicon.svg"');
     expect(homepage).not.toMatch(/guitar tuner|ear training|AI-powered/i);
+    expect(homepage).not.toContain('class="section-index"');
   });
 
   it("ships all approved support sections in the initial HTML", () => {
     for (const heading of [
       "How this vocal range test works",
-      "How to get a more accurate result",
+      "A clearer result starts with a comfortable voice",
       "Understanding your vocal range result",
-      "What this test can—and can’t—tell you",
-      "Microphone privacy",
+      "Microphone privacy, without the fine print",
       "Common questions",
     ]) expect(homepage).toContain(heading);
     expect(homepage).toContain('href="/privacy"');

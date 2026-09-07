@@ -2,30 +2,39 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="data:," />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex,nofollow" />
     <title>Vocal Range Test Result Design Fixture</title>
   </head>
   <body>
     <header class="site-header">
-      <a class="wordmark" href="/">Vocal Range Test</a>
-      <nav aria-label="Fixture navigation">
-        <a href="#">How it works</a>
-        <a href="#">Understand your result</a>
-        <a href="#">Privacy</a>
+      <a class="wordmark" href="/" aria-label="Vocal Range Test home"><span class="wordmark__mark" aria-hidden="true"><i></i></span><span>Vocal Range Test</span></a>
+      <nav class="desktop-nav" aria-label="Fixture navigation">
+        <a href="/#how-it-works">How it works</a>
+        <a href="/#understand-results">Understand your result</a>
+        <a href="/privacy">Privacy</a>
       </nav>
+      <details class="mobile-nav">
+        <summary><i class="ph ph-list" aria-hidden="true"></i><span>Menu</span></summary>
+        <nav class="mobile-nav__panel" aria-label="Mobile fixture navigation">
+          <a href="/">Vocal range test</a>
+          <a href="/#how-it-works">How it works</a>
+          <a href="/#understand-results">Understand your result</a>
+          <a href="/privacy">Privacy</a>
+        </nav>
+      </details>
     </header>
     <main>
       <section class="hero">
         <div class="hero__intro">
-          <p class="hero__kicker">VOICE · NOTE · RANGE</p>
-          <h1>Vocal<br class="desktop-break" /> Range Test</h1>
-          <p class="hero__value">Sing your lowest and highest comfortable notes. We’ll detect each note and show your range in semitones and octaves.</p>
+          <p class="hero__kicker"><span aria-hidden="true"></span> Result design fixture</p>
+          <h1>See your vocal range, <em>note by note.</em></h1>
+          <p class="hero__value">This no-index fixture keeps the complete result state aligned with the production test interface.</p>
         </div>
         <div class="tool-shell" id="design-result"></div>
       </section>
-      <section class="content-section steps-section design-fixture-footer"><div class="section-index">01</div><div class="section-content"><p class="eyebrow">THE PROCESS</p><h2>How this vocal range test works</h2></div></section>
+      <section class="content-section design-fixture-footer"><div class="section-heading"><p class="eyebrow">Internal visual QA</p><h2>Result-state reference</h2><p>This page is a design fixture and is excluded from search indexing.</p></div></section>
     </main>
     <script type="module" src="/src/product/design-result.ts"></script>
   </body>

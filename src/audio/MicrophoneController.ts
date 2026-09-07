@@ -45,6 +45,7 @@ export class MicrophoneController {
   private analyser: AnalyserNode | null = null;
   private timerId: number | null = null;
   private frame: Float32Array<ArrayBuffer> | null = null;
+  private startGeneration = 0;
 
   constructor(options: MicrophoneControllerOptions) {
     this.frameSize = options.frameSize;
@@ -74,11 +75,12 @@ export class MicrophoneController {
     if (this.state === "starting" || this.state === "running") {
       throw new Error("Microphone capture is already active");
     }
+    const generation = ++this.startGeneration;
     this.state = "starting";
     this.lastError = null;
 
     try {
-      this.stream = await this.getUserMedia({
+      const stream = await this.getUserMedia({
         audio: {
           autoGainControl: false,
           channelCount: 1,
@@ -86,8 +88,18 @@ export class MicrophoneController {
           noiseSuppression: false,
         },
       });
+      if (generation !== this.startGeneration) {
+        stream.getTracks().forEach((track) => track.stop());
+        throw new Error("Microphone start was cancelled");
+      }
+      this.stream = stream;
       this.context = this.createAudioContext();
-      if (this.context.state === "suspended") await this.context.resume();
+      if (this.context.state === "suspended") {
+        await this.context.resume();
+        if (generation !== this.startGeneration) {
+          throw new Error("Microphone start was cancelled");
+        }
+      }
       this.source = this.context.createMediaStreamSource(this.stream);
       this.analyser = this.context.createAnalyser();
       this.analyser.fftSize = this.frameSize;
@@ -105,6 +117,7 @@ export class MicrophoneController {
         trackSettings: this.stream.getAudioTracks()[0]?.getSettings() ?? null,
       };
     } catch (error) {
+      if (generation !== this.startGeneration) throw error;
       await this.release();
       this.state = "error";
       this.lastError = error instanceof Error ? error.message : String(error);
@@ -113,6 +126,7 @@ export class MicrophoneController {
   }
 
   async stop(): Promise<void> {
+    this.startGeneration += 1;
     await this.release();
     this.state = "idle";
   }
